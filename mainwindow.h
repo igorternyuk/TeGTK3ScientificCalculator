@@ -1,6 +1,6 @@
 #pragma once
 #include <gtk/gtk.h>
-
+#include <string>
 
 typedef struct {
 
@@ -27,7 +27,13 @@ private:
     GtkWidget *m_inputEntry;
     GtkWidget *m_table;
     void showMessage(GtkMessageType type, const char *msg);
+    void calculateExpression();
+    std::string getAngleUnits();
     friend void on_btn_clicked(GtkWidget*button, MainWindow *data);
+    friend gboolean key_release_event(GtkWidget*, GdkEventKey *event, MainWindow *data);
 };
 
 void on_btn_clicked(GtkWidget*button, MainWindow *data);
+gboolean key_release_event(GtkWidget *, GdkEventKey *event, MainWindow *data);
+
+

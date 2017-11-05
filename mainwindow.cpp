@@ -2,7 +2,6 @@
 #include "parser.h"
 #include <iostream>
 #include <sstream>
-#include <string>
 #include <vector>
 #include <stdexcept>
 
@@ -28,8 +27,7 @@ MainWindow::MainWindow()
     //Combobox
     m_combo_angle_units = gtk_combo_box_text_new();
     const char *angle_units[] = {"radians", "degrees", "grads"};
-    int i = 0;
-    for (i = 0; i < G_N_ELEMENTS (angle_units); i++){
+    for (std::size_t i {0u}; i < G_N_ELEMENTS (angle_units); i++){
         gtk_combo_box_text_append_text (GTK_COMBO_BOX_TEXT(m_combo_angle_units), angle_units[i]);
     }
     gtk_combo_box_set_active(GTK_COMBO_BOX(m_combo_angle_units), 0);
@@ -69,6 +67,8 @@ MainWindow::MainWindow()
 
     gtk_container_add(GTK_CONTAINER(m_window), mainBox);
     g_signal_connect(G_OBJECT(m_window), "destroy", G_CALLBACK(gtk_main_quit), NULL);
+    g_signal_connect (G_OBJECT(m_window), "key-press-event",
+                        G_CALLBACK (key_release_event), this);
 }
 
 void MainWindow::show()
@@ -90,13 +90,38 @@ void MainWindow::showMessage(GtkMessageType type, const char* msg)
     gtk_dialog_run (GTK_DIALOG (dialog));
 }
 
-void on_btn_clicked(GtkWidget*button, MainWindow *data)
+void MainWindow::calculateExpression()
 {
-    std::string input(gtk_entry_get_text(GTK_ENTRY(data->m_inputEntry)));
-    std::string button_text(gtk_button_get_label(GTK_BUTTON(button)));
+    std::string input(gtk_entry_get_text(GTK_ENTRY(m_inputEntry)));
+    std::string angle_units(getAngleUnits());
+    if(input.empty()){
+        showMessage(GTK_MESSAGE_ERROR, "Empty input!");
+    }
+    else {
+        std::vector<std::pair<char, double>> vars;
+        Parser p(input, vars, angle_units);
+        try
+        {
+            auto result = p.calculateExpression();
+            std::ostringstream oss;
+            int prec = (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(m_prec_spin_btn));
+            oss.precision(prec);
+            oss << std::fixed;
+            oss << result;
+            gtk_entry_set_text(GTK_ENTRY(m_inputEntry), oss.str().c_str());
 
+        }
+        catch (std::exception &ex)
+        {
+            showMessage(GTK_MESSAGE_ERROR, ex.what());
+        }
+    }
+}
+
+std::string MainWindow::getAngleUnits()
+{
     std::string angle_units;
-    int au = gtk_combo_box_get_active(GTK_COMBO_BOX(data->m_combo_angle_units));
+    int au = gtk_combo_box_get_active(GTK_COMBO_BOX(m_combo_angle_units));
     switch(au){
     case 1:
         angle_units = "gradus";
@@ -109,41 +134,33 @@ void on_btn_clicked(GtkWidget*button, MainWindow *data)
         angle_units = "radian";
         break;
     }
+    return angle_units;
+}
+
+void on_btn_clicked(GtkWidget*button, MainWindow *data)
+{
+    std::string input(gtk_entry_get_text(GTK_ENTRY(data->m_inputEntry)));
+    std::string button_text(gtk_button_get_label(GTK_BUTTON(button)));
+
+    std::string angle_units = data->getAngleUnits();
 
     bool is_hyp_mode_active = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(data->m_checkbox_hyp));
     bool is_arc_mode_active = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(data->m_checkbox_arc));
 
     if(button_text == "="){
-        if(input.empty()){
-            data->showMessage(GTK_MESSAGE_ERROR, "Empty input!");
-        }
-        else {
-            std::vector<std::pair<char, double>> vars;
-            Parser p(input, vars, angle_units);
-            try
-            {
-                auto result = p.calculateExpression();
-                std::ostringstream oss;
-                int prec = (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(data->m_prec_spin_btn));
-                oss.precision(prec);
-                oss << std::fixed;
-                oss << result;
-                gtk_entry_set_text(GTK_ENTRY(data->m_inputEntry), oss.str().c_str());
-
-            }
-            catch (std::exception &ex)
-            {
-                data->showMessage(GTK_MESSAGE_ERROR, ex.what());
-            }
-        }
+        data->calculateExpression();
     }
     else if(button_text == "CE")
     {
-        //int cursor_pos = gtk_editable_get_position( GTK_EDITABLE(data->m_inputEntry) );
-        if(input.size() > 0){
-            gtk_entry_set_text(GTK_ENTRY(data->m_inputEntry),
-                               input.substr(0,input.size() - 1).c_str());
+        int cursor_pos = gtk_editable_get_position( GTK_EDITABLE(data->m_inputEntry) );
+        if(input.size() > 0 &&  cursor_pos > 0){
+            auto left_part = input.substr(0, cursor_pos - 1);
+            auto right_part = input.substr(cursor_pos, input.size());
+            auto res_expr = left_part + right_part;
+            gtk_entry_set_text(GTK_ENTRY(data->m_inputEntry), res_expr.c_str());
         }
+        gtk_widget_grab_focus(data->m_inputEntry);
+        gtk_editable_set_position( GTK_EDITABLE(data->m_inputEntry), cursor_pos - 1);
     }
     else if(button_text == "C")
     {
@@ -251,4 +268,14 @@ void on_btn_clicked(GtkWidget*button, MainWindow *data)
         gtk_entry_set_text(GTK_ENTRY(data->m_inputEntry), input.c_str());
     }
     //gtk_widget_grab_focus(data->m_inputEntry);
+}
+
+gboolean key_release_event(GtkWidget*, GdkEventKey *event, MainWindow *data)
+{
+    if (event->keyval == GDK_KEY_Return){
+        std::cout << "Enter was pressed" << std::endl;
+        data->calculateExpression();
+        return TRUE;
+    }
+    return FALSE;
 }
